@@ -24,21 +24,45 @@ const getGeminiClient = () => {
  * Generate personalized fitness response using Gemini AI
  */
 export const generateFitnessResponse = async (userMessage, userProfile) => {
-    try {
-        const model = getGeminiClient().getGenerativeModel({
-            model: 'gemini-1.5-flash', // ✅ supported model
-        });
+    const prompt = buildPrompt(userMessage, userProfile);
 
-        const prompt = buildPrompt(userMessage, userProfile);
+    // Allow overriding model via env; try sensible fallbacks to handle API changes
+    const candidates = [
+        process.env.GEMINI_MODEL,
+        // Common current models
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash-8b',
+        'gemini-1.5-flash-8b-latest',
+        'gemini-1.5-pro',
+        'gemini-1.5-pro-latest',
+        // Legacy names that some API keys still allow
+        'gemini-pro',
+        'gemini-1.0-pro',
+        'gemini-1.0-pro-latest',
+    ].filter(Boolean);
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-
-        return response.text();
-    } catch (error) {
-        console.error('Gemini API Error:', error);
-        throw new Error('Failed to generate AI response.');
+    let lastErr;
+    for (const modelName of candidates) {
+        try {
+            const model = getGeminiClient().getGenerativeModel({ model: modelName });
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            return response.text();
+        } catch (err) {
+            // Keep trying other models on 404/not supported errors
+            lastErr = err;
+            const msg = String(err?.message || '');
+            if (msg.includes('not found') || msg.includes('not supported') || msg.includes('404')) {
+                console.warn(`Gemini model '${modelName}' failed, trying next fallback...`);
+                continue;
+            }
+            break; // Other errors: stop retrying
+        }
     }
+
+    console.error('Gemini API Error:', lastErr);
+    throw new Error(`Gemini API Error: ${lastErr?.message || 'Failed to generate AI response.'}`);
 };
 
 /**

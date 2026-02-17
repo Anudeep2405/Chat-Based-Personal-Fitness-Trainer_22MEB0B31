@@ -5,9 +5,15 @@
  */
 
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Load .env first
-dotenv.config();
+// Resolve backend directory (works regardless of process.cwd())
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Start the actual server
-import './server.js';
+// Load backend/.env explicitly to avoid CWD issues
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+// Start the actual server after env is loaded (use dynamic import to avoid ESM hoisting)
+await import('./server.js');

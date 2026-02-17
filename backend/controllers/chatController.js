@@ -1,5 +1,5 @@
 import User from '../models/User.js';
-import { generateFitnessResponse } from '../services/geminiService.js';
+import { generateFitnessResponse as generateWithGemini } from '../services/geminiService.js';
 
 /**
  * Send chat message and get AI response
@@ -23,11 +23,45 @@ export const sendMessage = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Generate AI response using Gemini (server-side)
-        const aiResponse = await generateFitnessResponse(
-            message,
-            user.getPublicProfile()
-        );
+        const profile = user.getPublicProfile();
+
+        let aiResponse;
+        const provider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
+
+        const tryGroq = async () => {
+            if (!process.env.GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+            const mod = await import('../services/grokService.js');
+            return await mod.generateFitnessResponse(message, profile);
+        };
+
+        const tryStub = async () => {
+            const mod = await import('../services/fallbackService.js');
+            return await mod.generateFitnessResponse(message, profile);
+        };
+
+        if (provider === 'stub') {
+            aiResponse = await tryStub();
+        } else if (provider === 'groq') {
+            try {
+                aiResponse = await tryGroq();
+            } catch (e) {
+                console.error('Groq provider failed:', e);
+                aiResponse = await tryStub();
+            }
+        } else {
+            // Default: Gemini -> Groq -> Stub
+            try {
+                aiResponse = await generateWithGemini(message, profile);
+            } catch (geminiErr) {
+                console.error('Gemini provider failed:', geminiErr);
+                try {
+                    aiResponse = await tryGroq();
+                } catch (groqErr) {
+                    console.error('Groq provider also failed:', groqErr);
+                    aiResponse = await tryStub();
+                }
+            }
+        }
 
         // Save to chat history
         user.chatHistory.push({
