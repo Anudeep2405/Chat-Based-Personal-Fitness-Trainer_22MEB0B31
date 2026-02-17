@@ -1,37 +1,48 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+/**
+ * Lazy initialization of Gemini client
+ * (Ensures .env is already loaded before using the API key)
+ */
+let genAI = null;
+
+const getGeminiClient = () => {
+    if (!genAI) {
+        const apiKey = process.env.GEMINI_API_KEY;
+
+        if (!apiKey) {
+            throw new Error("GEMINI_API_KEY not found in environment variables");
+        }
+
+        genAI = new GoogleGenerativeAI(apiKey);
+    }
+
+    return genAI;
+};
 
 /**
  * Generate personalized fitness response using Gemini AI
- * @param {string} userMessage - User's fitness query
- * @param {object} userProfile - User's profile data
- * @returns {Promise<string>} AI-generated response
  */
 export const generateFitnessResponse = async (userMessage, userProfile) => {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+        const model = getGeminiClient().getGenerativeModel({
+            model: 'gemini-1.5-flash', // ✅ supported model
+        });
 
-        // Build context-aware prompt
         const prompt = buildPrompt(userMessage, userProfile);
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        const text = response.text();
 
-        return text;
+        return response.text();
     } catch (error) {
         console.error('Gemini API Error:', error);
-        throw new Error('Failed to generate AI response. Please try again.');
+        throw new Error('Failed to generate AI response.');
     }
 };
 
 /**
  * Build personalized prompt with user context
- * @param {string} userMessage - User's query
- * @param {object} profile - User profile
- * @returns {string} Formatted prompt
  */
 const buildPrompt = (userMessage, profile) => {
     const goalMap = {
@@ -47,48 +58,52 @@ const buildPrompt = (userMessage, profile) => {
         advanced: 'advanced (experienced athlete)',
     };
 
-    return `You are an expert personal fitness trainer and nutritionist. Provide personalized, actionable advice.
+    return `
+You are an expert personal fitness trainer and nutritionist.
+Provide personalized, safe, and actionable advice.
 
 USER PROFILE:
 - Name: ${profile.name}
 - Age: ${profile.age} years old
 - Gender: ${profile.gender}
-- Current Weight: ${profile.weight} kg
+- Weight: ${profile.weight} kg
 - Height: ${profile.height} cm
 - Target Weight: ${profile.targetWeight || 'Not specified'} kg
-- Fitness Goal: ${goalMap[profile.fitnessGoal] || profile.fitnessGoal}
-- Fitness Level: ${levelMap[profile.fitnessLevel] || profile.fitnessLevel}
+- Goal: ${goalMap[profile.fitnessGoal] || profile.fitnessGoal}
+- Level: ${levelMap[profile.fitnessLevel] || profile.fitnessLevel}
 
-USER QUERY: ${userMessage}
+USER QUESTION:
+${userMessage}
 
 INSTRUCTIONS:
-1. Provide specific, personalized advice based on the user's profile
-2. Include workout recommendations with sets, reps, and duration
-3. Add nutrition tips when relevant
-4. Keep responses concise but informative (max 300 words)
-5. Use encouraging, motivational language
-6. If asked about workout plans, structure them clearly
-7. Always consider the user's fitness level and goals
+1. Give structured, practical guidance.
+2. Include workouts (sets/reps/duration).
+3. Add nutrition advice if relevant.
+4. Keep response under 300 words.
+5. Be motivational and clear.
+6. Adapt intensity to user's fitness level.
+7. Avoid unsafe or extreme suggestions.
 
-Respond now:`;
+Respond now:
+`;
 };
 
 /**
- * Generate workout plan based on user goals
- * @param {object} userProfile - User's profile data
- * @returns {Promise<string>} Workout plan
+ * Generate weekly workout plan
  */
 export const generateWorkoutPlan = async (userProfile) => {
-    const message = `Create a detailed weekly workout plan for me based on my fitness goals.`;
-    return await generateFitnessResponse(message, userProfile);
+    return generateFitnessResponse(
+        'Create a detailed weekly workout plan for me.',
+        userProfile
+    );
 };
 
 /**
  * Generate nutrition advice
- * @param {object} userProfile - User's profile data
- * @returns {Promise<string>} Nutrition tips
  */
 export const generateNutritionAdvice = async (userProfile) => {
-    const message = `Give me personalized nutrition and diet advice for my fitness goals.`;
-    return await generateFitnessResponse(message, userProfile);
+    return generateFitnessResponse(
+        'Give me personalized nutrition and diet advice.',
+        userProfile
+    );
 };

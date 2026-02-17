@@ -1,5 +1,4 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import connectDB from './config/db.js';
 
@@ -7,9 +6,6 @@ import connectDB from './config/db.js';
 import authRoutes from './routes/auth.js';
 import chatRoutes from './routes/chat.js';
 import progressRoutes from './routes/progress.js';
-
-// Load environment variables
-dotenv.config();
 
 // Initialize Express app
 const app = express();
